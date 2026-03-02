@@ -1,10 +1,14 @@
 # Mailgun MCP Server
+
 [![MCP](https://img.shields.io/badge/MCP-Server-blue.svg)](https://github.com/modelcontextprotocol)
 
 ## Overview
+
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Mailgun](https://mailgun.com), enabling MCP-compatible AI clients to interact with the Mailgun email service.
 
-> **Note:** This MCP server runs locally on your machine. Mailgun does not currently offer a hosted version of this server.
+Supports two transport modes:
+- **STDIO** — For local MCP clients (Claude Desktop, Cursor, Windsurf, etc.)
+- **Streamable HTTP** — For self-hosted VPS deployment with Docker, Nginx, and analytics
 
 ### Capabilities
 
@@ -24,8 +28,11 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for [Ma
 
 - Node.js (v18 or higher)
 - Mailgun account and API key
+- Docker & Docker Compose (for VPS deployment)
 
-## Quick Start
+---
+
+## Quick Start (STDIO Mode)
 
 ### Configuration
 
@@ -36,7 +43,7 @@ Add the following to your MCP client configuration:
   "mcpServers": {
     "mailgun": {
       "command": "npx",
-      "args": ["-y", "@mailgun/mcp-server"],
+      "args": ["-y", "mcp-mailgun"],
       "env": {
         "MAILGUN_API_KEY": "YOUR-mailgun-api-key",
         "MAILGUN_API_REGION": "us"
@@ -46,18 +53,106 @@ Add the following to your MCP client configuration:
 }
 ```
 
-#### Environment Variables
+### Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `MAILGUN_API_KEY` | Yes | — | Your Mailgun API key |
 | `MAILGUN_API_REGION` | No | `us` | API region: `us` or `eu` |
 
-#### Client-Specific Config Paths
+### Client-Specific Config Paths
 
 - **Claude Desktop** (macOS): `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Claude Desktop** (Windows): `%APPDATA%/Claude/claude_desktop_config.json`
 - **Claude Code**: Run `claude mcp add` or edit `~/.claude.json`
+- **Cursor**: Settings → MCP Servers
+- **Windsurf**: Settings → MCP
+
+---
+
+## VPS Deployment (HTTP Mode)
+
+### 1. Clone and Configure
+
+```bash
+# On your VPS
+cd /opt/mcp-servers
+git clone https://github.com/hithereiamaliff/mcp-mailgun.git mailgun
+cd mailgun
+cp .env.example .env
+# Edit .env with your Mailgun API key
+```
+
+### 2. Firebase Analytics (Optional)
+
+Place your Firebase service account JSON at `.credentials/firebase-service-account.json` for cloud-based analytics persistence.
+
+### 3. Deploy with Docker
+
+```bash
+docker compose up -d --build
+```
+
+The server will be available at `http://localhost:8087`.
+
+### 4. Nginx Reverse Proxy
+
+Add the location block from `deploy/nginx-mcp.conf` to your Nginx server block:
+
+```nginx
+location /mailgun/ {
+    proxy_pass http://127.0.0.1:8087/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+    proxy_buffering off;
+    proxy_cache off;
+    client_max_body_size 10M;
+}
+```
+
+Then reload Nginx: `sudo nginx -t && sudo systemctl reload nginx`
+
+### 5. Auto-Deployment
+
+GitHub Actions workflow (`.github/workflows/deploy-vps.yml`) auto-deploys on push to `main`. Configure these GitHub Secrets:
+
+| Secret | Description |
+|---|---|
+| `VPS_HOST` | VPS hostname or IP |
+| `VPS_USERNAME` | SSH username |
+| `VPS_SSH_KEY` | SSH private key |
+| `VPS_PORT` | SSH port (usually `22`) |
+
+### HTTP Endpoints
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Server info |
+| `GET /health` | Health check |
+| `POST /mcp` | MCP protocol endpoint |
+| `GET /analytics` | Analytics JSON |
+| `GET /analytics/dashboard` | Visual analytics dashboard |
+| `GET /analytics/tools` | Tool usage stats |
+
+### MCP Client Configuration (HTTP)
+
+```json
+{
+  "mcpServers": {
+    "mailgun": {
+      "url": "https://mcp.yourdomain.com/mailgun/mcp?apiKey=YOUR_API_KEY&region=us"
+    }
+  }
+}
+```
+
+---
 
 ## Sample Prompts
 
@@ -67,8 +162,6 @@ Can you send an email to EMAIL_HERE with a funny email body that makes it sound
 like it's from the IT Desk from Office Space? Please use the sending domain
 DOMAIN_HERE, and make the email from "postmaster@DOMAIN_HERE"!
 ```
-
-> Note: some MCP clients require a paid plan to invoke tools that send data. If sending fails silently, check your client's plan.
 
 #### Fetch and Visualize Sending Statistics
 ```
@@ -93,56 +186,40 @@ Check the DNS verification status for my domain DOMAIN_HERE and tell me
 if anything needs fixing.
 ```
 
-#### Review Suppressions
-```
-Are there any unsubscribes or complaints for DOMAIN_HERE? Summarize the
-top offenders.
-```
-
-#### Manage Routing Rules
-```
-List all my inbound routes and explain what each one does.
-```
-
-#### Create a Mailing List
-```
-Create a mailing list called announcements@DOMAIN_HERE and add these
-members: alice@example.com, bob@example.com.
-```
-
-#### Compare Domains
-```
-Compare my sending volume and delivery rates across all my domains for
-the past month.
-```
-
-#### Engagement by Region
-```
-Break down my email engagement by country and device for DOMAIN_HERE.
-```
-
-#### Review Tracking Settings
-```
-List all my domains and show which ones have tracking enabled for clicks
-and opens.
-```
+---
 
 ## Development
 
-To run from source, clone the repository and use `node` directly:
-
 ```bash
-git clone https://github.com/mailgun/mailgun-mcp-server.git
-cd mailgun-mcp-server
+git clone https://github.com/hithereiamaliff/mcp-mailgun.git
+cd mcp-mailgun
 npm install
-npm test
 ```
 
-In your MCP client config, replace the `npx` command with:
+### Scripts
 
-```json
-"command": "node",
-"args": ["/path/to/mailgun-mcp-server/src/mailgun-mcp.js"]
+| Script | Description |
+|---|---|
+| `npm run build:tsc` | Build TypeScript to `dist/` |
+| `npm start` | Run STDIO server (compiled) |
+| `npm run start:http` | Run HTTP server (compiled) |
+| `npm run dev:http` | Run HTTP server with tsx (dev) |
+| `npm test` | Run tests |
+| `npm run lint` | Run ESLint |
+
+### Project Structure
+
+```
+src/
+├── mailgun-mcp.ts       # Core MCP logic (tools, API client, OpenAPI parsing)
+├── index.ts             # STDIO entry point
+├── http-server.ts       # HTTP/Express entry point with analytics
+├── firebase-analytics.ts # Firebase analytics integration
+└── openapi.yaml         # Mailgun OpenAPI specification
+deploy/
+└── nginx-mcp.conf       # Nginx location block template
+Dockerfile               # Docker container definition
+docker-compose.yml       # Docker Compose service config
 ```
 
 ## Security Considerations
@@ -150,10 +227,6 @@ In your MCP client config, replace the `npx` command with:
 ### API key isolation
 
 Your Mailgun API key is passed as an environment variable and is never exposed to the AI model itself — it is only used by the MCP server process to authenticate requests. The server does not log API keys, request parameters, or response data.
-
-### Local execution
-
-The server runs locally on your machine. All communication with the Mailgun API is over HTTPS with TLS certificate validation enforced. No data is sent to third-party services beyond the Mailgun API.
 
 ### API key permissions
 
@@ -163,21 +236,14 @@ Use a dedicated Mailgun API key with permissions scoped to only the operations y
 
 The server does not implement client-side rate limiting. Each tool call from the AI translates directly into a Mailgun API request. The server relies on Mailgun's server-side rate limits to prevent abuse — requests that exceed those limits will return an error to the AI assistant.
 
-### Prompt injection
-
-As with any MCP server, a crafted or adversarial prompt could trick the AI assistant into calling operations you did not intend — for example, modifying tracking settings or reading mailing list members. Review your AI assistant's tool-call confirmations before approving actions, especially in untrusted prompt contexts.
-
-### Webhook URLs
-
-Webhook create and update operations accept arbitrary URLs provided through the AI assistant. The MCP server passes these URLs to the Mailgun API without additional validation. Mailgun is responsible for validating webhook destinations. Ensure your AI assistant does not set webhook URLs to unintended internal or sensitive addresses.
-
 ### Input validation
 
 All tool parameters are validated against the Mailgun OpenAPI specification using Zod schemas. However, validation depends on the accuracy of the OpenAPI spec, and some edge-case parameters may fall back to permissive validation. The Mailgun API performs its own server-side validation as an additional layer of protection.
 
 ## Debugging
 
-The MCP server communicates over stdio. Refer to the [MCP Debugging Guide](https://modelcontextprotocol.io/docs/tools/debugging) for troubleshooting.
+- **STDIO mode**: Refer to the [MCP Debugging Guide](https://modelcontextprotocol.io/docs/tools/debugging)
+- **HTTP mode**: Check `docker compose logs -f mcp-mailgun` and the `/analytics/dashboard` endpoint
 
 ## License
 
@@ -185,4 +251,4 @@ Apache 2.0 — see [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-We welcome contributions! Please feel free to submit a [Pull Request](https://github.com/mailgun/mailgun-mcp-server/pulls) or open an [Issue](https://github.com/mailgun/mailgun-mcp-server/issues).
+We welcome contributions! Please feel free to submit a [Pull Request](https://github.com/hithereiamaliff/mcp-mailgun/pulls) or open an [Issue](https://github.com/hithereiamaliff/mcp-mailgun/issues).

@@ -17,6 +17,12 @@ out/
 .env.test.local
 .env.production.local
 
+# Firebase credentials
+.credentials/
+
+# Analytics data
+data/
+
 # Coverage directory used by tools like istanbul
 coverage/
 

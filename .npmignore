@@ -1,9 +1,19 @@
+# Source TypeScript (compiled output in dist/ is shipped)
+src/*.ts
+
 # Tests and config
 test/
 coverage/
 jest.config.mjs
 eslint.config.js
+tsconfig.json
 .github/
+
+# Deployment
+deploy/
+Dockerfile
+docker-compose.yml
+.env.example
 
 # IDE
 .idea/
@@ -13,6 +23,10 @@ eslint.config.js
 .git/
 .gitignore
 
+# Credentials
+.credentials/
+
 # Misc
 .DS_Store
 .env
+data/

@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import * as serverModule from '../src/mailgun-mcp.js';
+import * as serverModule from '../dist/mailgun-mcp.js';
 
 // Disable console.error and console.warn during tests
 const originalConsoleError = console.error;
@@ -520,16 +520,19 @@ describe('Mailgun MCP Server', () => {
   });
 
   describe('generateToolsFromOpenApi()', () => {
-    test('warns for endpoints not found in spec', () => {
+    test('warns for endpoints not found in spec', async () => {
       console.warn.mockClear();
 
       // Provide an empty spec - none of the endpoints will match
-      serverModule.generateToolsFromOpenApi({ paths: {} });
+      const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+      const dummyServer = new McpServer({ name: 'test', version: '0.0.0' });
+      const dummyConfig = { apiKey: 'test', region: 'us', hostname: 'api.mailgun.net' };
+      serverModule.generateToolsFromOpenApi(dummyServer, { paths: {} }, dummyConfig);
 
       expect(console.warn).toHaveBeenCalled();
     });
 
-    test('registers tools for matching endpoints', () => {
+    test('registers tools for matching endpoints', async () => {
       const spec = {
         paths: {
           '/v4/domains': {
@@ -542,7 +545,10 @@ describe('Mailgun MCP Server', () => {
       };
 
       // Should not throw
-      expect(() => serverModule.generateToolsFromOpenApi(spec)).not.toThrow();
+      const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+      const dummyServer = new McpServer({ name: 'test', version: '0.0.0' });
+      const dummyConfig = { apiKey: 'test', region: 'us', hostname: 'api.mailgun.net' };
+      expect(() => serverModule.generateToolsFromOpenApi(dummyServer, spec, dummyConfig)).not.toThrow();
     });
   });
 
@@ -737,7 +743,7 @@ describe('getOperationDetails()', () => {
 
 describe('endpoint validation against OpenAPI spec', () => {
   const openApiSpec = serverModule.loadOpenApiSpec(
-    new URL('../src/openapi.yaml', import.meta.url).pathname
+    serverModule.findOpenApiSpec()
   );
 
   test('every endpoint matches a path and method in the OpenAPI spec', () => {
@@ -841,7 +847,7 @@ describe('sanitizePropertyKey()', () => {
 
 describe('schema property key validation against Anthropic API pattern', () => {
   const openApiSpec = serverModule.loadOpenApiSpec(
-    new URL('../src/openapi.yaml', import.meta.url).pathname
+    serverModule.findOpenApiSpec()
   );
   const KEY_PATTERN = /^[a-zA-Z0-9_.-]{1,64}$/;
 
